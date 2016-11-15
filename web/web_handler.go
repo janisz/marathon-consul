@@ -1,14 +1,13 @@
 package web
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"net/http"
-
 	"time"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/allegro/marathon-consul/events"
 	"github.com/allegro/marathon-consul/metrics"
 )
 
@@ -20,6 +19,12 @@ func newWebHandler(eventQueue chan event) *EventHandler {
 	return &EventHandler{eventQueue: eventQueue}
 }
 
+const (
+	statusUpdateEvent        = "status_update_event"
+	healthStatusChangedEvent = "health_status_changed_event"
+	unsuportedEventType      = "Unsuported"
+)
+
 func (h *EventHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	metrics.Time("events.response", func() {
 		body, err := ioutil.ReadAll(r.Body)
@@ -30,22 +35,27 @@ func (h *EventHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		}
 		log.WithField("Body", string(body)).Debug("Received request")
 
-		eventType, err := events.EventType(body)
-		if err != nil {
-			handleBadRequest(err, w)
-			return
-		}
-
+		eventType := eventType(body)
 		log.WithField("EventType", eventType).Debug("Received event")
 		metrics.Mark("events.requests." + eventType)
 
-		if eventType == "status_update_event" || eventType == "health_status_changed_event" {
-			h.eventQueue <- event{eventType: eventType, body: body, timestamp: time.Now()}
-		} else {
-			log.WithField("EventType", eventType).Debug("Not handled event type")
+		if eventType == unsuportedEventType {
+			drop(w)
+			return
 		}
+
+		h.eventQueue <- event{eventType: eventType, body: body, timestamp: time.Now()}
 		accepted(w)
 	})
+}
+
+func eventType(body []byte) string {
+	if bytes.Contains(body, []byte("\""+statusUpdateEvent+"\"")) {
+		return statusUpdateEvent
+	} else if bytes.Contains(body, []byte("\""+healthStatusChangedEvent+"\"")) {
+		return healthStatusChangedEvent
+	}
+	return unsuportedEventType
 }
 
 func handleBadRequest(err error, w http.ResponseWriter) {
@@ -59,4 +69,10 @@ func accepted(w http.ResponseWriter) {
 	metrics.Mark("events.response.202")
 	w.WriteHeader(http.StatusAccepted)
 	fmt.Fprintln(w, "OK")
+}
+
+func drop(w http.ResponseWriter) {
+	metrics.Mark("events.response.200")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "DROP")
 }

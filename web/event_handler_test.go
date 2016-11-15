@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/allegro/marathon-consul/apps"
@@ -15,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestWebHandler_NotHandleUnknownEventType(t *testing.T) {
+func TestWebHandler_DropUnknownEventType(t *testing.T) {
 	t.Parallel()
 
 	// given
@@ -30,7 +29,7 @@ func TestWebHandler_NotHandleUnknownEventType(t *testing.T) {
 	stopChan <- stopEvent{}
 
 	// then
-	assertAccepted(t, recorder)
+	assertDrop(t, recorder)
 }
 
 func TestWebHandler_HandleRadderError(t *testing.T) {
@@ -49,7 +48,7 @@ func TestWebHandler_HandleRadderError(t *testing.T) {
 	assert.Equal(t, "Some error\n", recorder.Body.String())
 }
 
-func TestWebHandler_HandleEmptyBody(t *testing.T) {
+func TestWebHandler_DropEmptyBody(t *testing.T) {
 	t.Parallel()
 
 	// given
@@ -61,11 +60,10 @@ func TestWebHandler_HandleEmptyBody(t *testing.T) {
 	handler.Handle(recorder, req)
 
 	// then
-	assert.Equal(t, 400, recorder.Code)
-	assert.Equal(t, "unexpected end of JSON input\n", recorder.Body.String())
+	assertDrop(t, recorder)
 }
 
-func TestWebHandler_NotHandleMalformedEventType(t *testing.T) {
+func TestWebHandler_DropMalformedEventType(t *testing.T) {
 	t.Parallel()
 
 	// given
@@ -77,27 +75,10 @@ func TestWebHandler_NotHandleMalformedEventType(t *testing.T) {
 	handler.Handle(recorder, req)
 
 	// then
-	assert.Equal(t, 400, recorder.Code)
-	assert.Equal(t, "invalid character 'e' looking for beginning of object key string\n", recorder.Body.String())
+	assertDrop(t, recorder)
 }
 
-func TestWebHandler_HandleMalformedEventType(t *testing.T) {
-	t.Parallel()
-
-	// given
-	handler := newWebHandler(nil)
-	req, _ := http.NewRequest("POST", "/events", bytes.NewBuffer([]byte(`{eventType:"test_event"}`)))
-
-	// when
-	recorder := httptest.NewRecorder()
-	handler.Handle(recorder, req)
-
-	// then
-	assert.Equal(t, 400, recorder.Code)
-	assert.Equal(t, "invalid character 'e' looking for beginning of object key string\n", recorder.Body.String())
-}
-
-func TestWebHandler_NotHandleInvalidEventType(t *testing.T) {
+func TestWebHandler_DropInvalidEventType(t *testing.T) {
 	t.Parallel()
 
 	// given
@@ -109,13 +90,11 @@ func TestWebHandler_NotHandleInvalidEventType(t *testing.T) {
 	handler.Handle(recorder, req)
 
 	// then
-	assert.Equal(t, 400, recorder.Code)
-
-	assert.True(t, strings.HasPrefix(recorder.Body.String(), "json: cannot unmarshal array"))
+	assertDrop(t, recorder)
 
 }
 
-func TestWebHandler_HandleAppInvalidBody(t *testing.T) {
+func TestWebHandler_DropAppInvalidBody(t *testing.T) {
 	t.Parallel()
 
 	// given
@@ -131,8 +110,7 @@ func TestWebHandler_HandleAppInvalidBody(t *testing.T) {
 	stopChan <- stopEvent{}
 
 	// then
-	assert.Equal(t, 400, recorder.Code)
-	assert.Equal(t, "no event\n", recorder.Body.String())
+	assertDrop(t, recorder)
 }
 
 func TestWebHandler_NotHandleStatusEventWithInvalidBody(t *testing.T) {
@@ -539,19 +517,9 @@ func TestWebHandler_HandleHealthStatusEventWhenTaskIsNotInMarathon(t *testing.T)
 	assert.True(t, marathon.Interactions())
 }
 
-func newConsulStubWithApplicationsTasksRegistered(applications ...*apps.App) *consul.Stub {
-	service := consul.NewConsulStub()
-	for _, app := range applications {
-		for _, task := range app.Tasks {
-			service.Register(&task, app)
-		}
-	}
-	return service
-}
-
 type BadReader struct{}
 
-func (r BadReader) Read(p []byte) (n int, err error) {
+func (r BadReader) Read(p []byte) (int, error) {
 	return 0, errors.New("Some error")
 }
 
@@ -569,4 +537,9 @@ func healthStatusChangeEventForTask(taskID string) string {
 func assertAccepted(t *testing.T, recorder *httptest.ResponseRecorder) {
 	assert.Equal(t, 202, recorder.Code)
 	assert.Equal(t, "OK\n", recorder.Body.String())
+}
+
+func assertDrop(t *testing.T, recorder *httptest.ResponseRecorder) {
+	assert.Equal(t, 200, recorder.Code)
+	assert.Equal(t, "DROP\n", recorder.Body.String())
 }
