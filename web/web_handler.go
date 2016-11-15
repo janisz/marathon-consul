@@ -39,7 +39,11 @@ func (h *EventHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		log.WithField("EventType", eventType).Debug("Received event")
 		metrics.Mark("events.requests." + eventType)
 
-		h.eventQueue <- event{eventType: eventType, body: body, timestamp: time.Now()}
+		if eventType == "status_update_event" || eventType == "health_status_changed_event" {
+			h.eventQueue <- event{eventType: eventType, body: body, timestamp: time.Now()}
+		} else {
+			log.WithField("EventType", eventType).Debug("Not handled event type")
+		}
 		accepted(w)
 	})
 }
