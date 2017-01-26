@@ -24,7 +24,7 @@ hash consul 2>/dev/null || {
     archive="consul_${version}_${os}_${arch}.zip"
 
     mkdir -p bin
-    curl -OLs https://releases.hashicorp.com/consul/$version/$archive
+    curl -OL https://releases.hashicorp.com/consul/$version/$archive
     unzip -q "$archive" -d bin
     rm "$archive"
     consul --version
