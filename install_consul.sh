@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+set -x
 export PATH=./bin:$PATH
 
 hash consul 2>/dev/null || {
